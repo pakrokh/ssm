@@ -11,7 +11,11 @@ import time
 from app.database import get_db
 from app.models import Tunnel, Node
 from app.node_client import NodeClient
-from app.tunnel_projects import list_tunnel_projects, normalize_tunnel_payload
+from app.tunnel_projects import (
+    is_external_script_runtime,
+    list_tunnel_projects,
+    normalize_tunnel_payload,
+)
 
 
 router = APIRouter()
@@ -176,6 +180,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     tunnel.core = normalized_core
     tunnel.type = normalized_type
     tunnel.spec = normalized_spec
+    is_external_runtime = is_external_script_runtime(tunnel.core, tunnel.spec)
     
     if tunnel.spec and tunnel.core == "backhaul":
         ports_received = tunnel.spec.get("ports", [])
@@ -186,7 +191,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
         if ports:
             tunnel.spec["ports"] = ports
     
-    is_reverse_tunnel = tunnel.core in {"rathole", "backhaul", "chisel", "frp"}
+    is_reverse_tunnel = (tunnel.core in {"rathole", "backhaul", "chisel", "frp"}) and (not is_external_runtime)
     foreign_node = None
     iran_node = None
     
@@ -265,6 +270,13 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     db.add(db_tunnel)
     await db.commit()
     await db.refresh(db_tunnel)
+
+    if is_external_runtime:
+        db_tunnel.status = "active"
+        db_tunnel.error_message = None
+        await db.commit()
+        await db.refresh(db_tunnel)
+        return db_tunnel
     
     try:
         needs_gost_forwarding = db_tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and db_tunnel.core == "gost" and not is_reverse_tunnel
@@ -1177,6 +1189,12 @@ async def update_tunnel(
     await db.refresh(tunnel)
     
     if spec_changed:
+        if is_external_script_runtime(tunnel.core, tunnel.spec):
+            tunnel.status = "active"
+            tunnel.error_message = None
+            await db.commit()
+            await db.refresh(tunnel)
+            return tunnel
         try:
             needs_gost_forwarding = tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and tunnel.core == "gost"
             needs_rathole_server = tunnel.core == "rathole"
@@ -1409,6 +1427,13 @@ async def apply_tunnel(tunnel_id: str, request: Request, db: AsyncSession = Depe
         flag_modified(tunnel, "spec")
         await db.commit()
         await db.refresh(tunnel)
+
+    if is_external_script_runtime(tunnel.core, tunnel.spec):
+        tunnel.status = "active"
+        tunnel.error_message = None
+        await db.commit()
+        await db.refresh(tunnel)
+        return {"status": "skipped", "message": "External script provider; no managed apply step"}
     
     client = NodeClient()
     
@@ -1788,9 +1813,10 @@ async def reapply_all_tunnels(request: Request, db: AsyncSession = Depends(get_d
     tunnels = result.scalars().all()
     
     if not tunnels:
-        return {"status": "success", "message": "No tunnels to reapply", "applied": 0, "failed": 0}
+        return {"status": "success", "message": "No tunnels to reapply", "applied": 0, "skipped": 0, "failed": 0}
     
     applied = 0
+    skipped = 0
     failed = 0
     errors = []
     
@@ -1802,6 +1828,8 @@ async def reapply_all_tunnels(request: Request, db: AsyncSession = Depends(get_d
                 result_data = await apply_tunnel(tunnel.id, request, db)
                 if result_data and result_data.get("status") == "applied":
                     applied += 1
+                elif result_data and result_data.get("status") == "skipped":
+                    skipped += 1
                 else:
                     failed += 1
                     errors.append(f"Tunnel {tunnel.name}: Failed to apply")
@@ -1819,8 +1847,9 @@ async def reapply_all_tunnels(request: Request, db: AsyncSession = Depends(get_d
     
     return {
         "status": "success",
-        "message": f"Reapplied {applied} tunnels, {failed} failed",
+        "message": f"Reapplied {applied} tunnels, {skipped} skipped, {failed} failed",
         "applied": applied,
+        "skipped": skipped,
         "failed": failed,
         "errors": errors[:10]  # Limit errors to first 10
     }

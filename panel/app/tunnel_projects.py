@@ -111,6 +111,41 @@ DEFAULT_PROJECT_FOR_CORE = {
 }
 
 
+def get_tunnel_project(project_id: str | None) -> dict[str, Any] | None:
+    """Return project profile by id."""
+    if not project_id:
+        return None
+    normalized = str(project_id).strip().lower()
+    if not normalized:
+        return None
+    return TUNNEL_PROJECTS.get(normalized)
+
+
+def resolve_runtime_mode(core: str, spec: dict[str, Any] | None) -> str | None:
+    """Resolve runtime mode from payload metadata with core fallback."""
+    normalized_spec = dict(spec or {})
+    runtime_mode = str(normalized_spec.get("runtime_mode") or "").strip().lower()
+    if runtime_mode:
+        return runtime_mode
+
+    project_id = normalized_spec.get("project_id")
+    project = get_tunnel_project(project_id)
+    if project:
+        return str(project.get("runtime_mode") or "").strip().lower() or None
+
+    default_project_id = DEFAULT_PROJECT_FOR_CORE.get((core or "").strip().lower())
+    default_project = get_tunnel_project(default_project_id)
+    if default_project:
+        return str(default_project.get("runtime_mode") or "").strip().lower() or None
+
+    return None
+
+
+def is_external_script_runtime(core: str, spec: dict[str, Any] | None) -> bool:
+    """Check whether tunnel should be handled as external script provider."""
+    return resolve_runtime_mode(core, spec) == "external_script"
+
+
 def list_tunnel_projects() -> list[dict[str, Any]]:
     """Return the provider catalog in the fixed rollout order."""
     projects: list[dict[str, Any]] = []

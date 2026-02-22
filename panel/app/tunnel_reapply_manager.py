@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models import Settings, Tunnel
 from app.node_client import NodeClient
+from app.tunnel_projects import is_external_script_runtime
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,10 @@ class TunnelReapplyManager:
             
             for tunnel in tunnels:
                 try:
+                    if is_external_script_runtime(tunnel.core, tunnel.spec or {}):
+                        logger.debug("Skipping external-script tunnel %s in auto reapply", tunnel.id)
+                        continue
+
                     is_reverse_tunnel = tunnel.core in {"rathole", "backhaul", "chisel", "frp"}
                     
                     if is_reverse_tunnel:
@@ -392,4 +397,3 @@ class TunnelReapplyManager:
 
 
 tunnel_reapply_manager = TunnelReapplyManager()
-
