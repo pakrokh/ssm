@@ -50,10 +50,6 @@ class NodeClient:
         if ip_address:
             candidates.append(self._normalize_http_base(format_address_port(ip_address, api_port)))
 
-        # Last-resort fallback for environments where hostname route works.
-        if node.fingerprint:
-            candidates.append(self._normalize_http_base(format_address_port(node.fingerprint, api_port)))
-
         # Also try opposite scheme once for each candidate.
         expanded: List[str] = []
         for base in candidates:
