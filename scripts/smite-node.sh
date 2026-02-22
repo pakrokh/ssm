@@ -6,6 +6,11 @@ set -e
 echo "=== Smite Node Installer ==="
 echo ""
 
+# Repository source (override with SMITE_REPO_SLUG if needed)
+REPO_SLUG="${SMITE_REPO_SLUG:-pakrokh/ssm}"
+REPO_URL="https://github.com/${REPO_SLUG}.git"
+RAW_BASE_URL="https://raw.githubusercontent.com/${REPO_SLUG}"
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     echo "Please run as root (use sudo)"
@@ -130,7 +135,7 @@ fi
 if [ ! -f "Dockerfile" ]; then
     echo "Cloning node files from GitHub..."
     TEMP_DIR=$(mktemp -d)
-    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/Smite.git "$TEMP_DIR" || {
+    git clone --depth 1 $GIT_BRANCH "$REPO_URL" "$TEMP_DIR" || {
         echo "Error: Failed to clone repository"
         exit 1
     }
@@ -142,7 +147,7 @@ else
     # Update docker-compose.yml and Dockerfile if they exist
     echo "Updating node files from GitHub..."
     TEMP_DIR=$(mktemp -d)
-    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/Smite.git "$TEMP_DIR" || {
+    git clone --depth 1 $GIT_BRANCH "$REPO_URL" "$TEMP_DIR" || {
         echo "Warning: Failed to clone repository for updates"
         rm -rf "$TEMP_DIR"
     } || true
@@ -167,7 +172,7 @@ else
     if [ "${SMITE_VERSION:-latest}" = "next" ]; then
         CLI_BRANCH="next"
     fi
-    sudo curl -L https://raw.githubusercontent.com/zZedix/Smite/${CLI_BRANCH}/cli/smite-node.py -o /usr/local/bin/smite-node
+    sudo curl -L "${RAW_BASE_URL}/${CLI_BRANCH}/cli/smite-node.py" -o /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
 fi
 
@@ -281,4 +286,3 @@ else
     echo "Check logs with: docker compose logs"
     exit 1
 fi
-

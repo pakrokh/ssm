@@ -50,7 +50,7 @@ For ready-to-copy templates, see `INSTALLATION_EXAMPLE.md`.
 ### Quick Install
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scripts/install.sh)"
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/pakrokh/ssm/main/scripts/install.sh)"
 ```
 
 <details>
@@ -58,8 +58,8 @@ sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scr
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/zZedix/Smite.git
-cd Smite
+git clone https://github.com/pakrokh/ssm.git
+cd ssm
 ```
 
 2. Copy environment file and configure:
@@ -101,7 +101,7 @@ For ready-to-copy templates, see `INSTALLATION_EXAMPLE.md`.
 ### Quick Install
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scripts/smite-node.sh)"
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/pakrokh/ssm/main/scripts/smite-node.sh)"
 ```
 
 <details>

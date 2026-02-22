@@ -9,6 +9,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Repository source (override with SMITE_REPO_SLUG if needed)
+REPO_SLUG="${SMITE_REPO_SLUG:-pakrokh/ssm}"
+REPO_URL="https://github.com/${REPO_SLUG}.git"
+
 # Spinner function
 spinner() {
     local pid=$1
@@ -98,7 +102,7 @@ else
     if [ "${SMITE_VERSION:-latest}" = "next" ]; then
         GIT_BRANCH="-b next"
     fi
-    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/Smite.git "$INSTALL_DIR" || {
+    git clone --depth 1 $GIT_BRANCH "$REPO_URL" "$INSTALL_DIR" || {
         echo -e "${RED}Error: Failed to clone repository${NC}"
         exit 1
     }

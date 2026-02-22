@@ -7,14 +7,14 @@ This file gives copy/paste examples for panel and node installation.
 ### Quick Install
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scripts/install.sh)"
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/pakrokh/ssm/main/scripts/install.sh)"
 ```
 
 ### Manual Install
 
 ```bash
-git clone https://github.com/zZedix/Smite.git
-cd Smite
+git clone https://github.com/pakrokh/ssm.git
+cd ssm
 cp .env.example .env
 sudo bash cli/install_cli.sh
 docker compose up -d
@@ -37,14 +37,14 @@ http://SERVER_IP:8000
 ### Quick Install
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scripts/smite-node.sh)"
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/pakrokh/ssm/main/scripts/smite-node.sh)"
 ```
 
 ### Manual Install Example (Iran Node)
 
 ```bash
-git clone https://github.com/zZedix/Smite.git
-cd Smite/node
+git clone https://github.com/pakrokh/ssm.git
+cd ssm/node
 mkdir -p certs config
 # Copy panel Iran CA certificate:
 #   /path/to/panel/certs/ca.crt -> ./certs/ca.crt
@@ -65,8 +65,8 @@ docker compose up -d
 ### Manual Install Example (Foreign Node)
 
 ```bash
-git clone https://github.com/zZedix/Smite.git
-cd Smite/node
+git clone https://github.com/pakrokh/ssm.git
+cd ssm/node
 mkdir -p certs config
 # Copy panel Foreign CA certificate:
 #   /path/to/panel/certs/ca-server.crt -> ./certs/ca.crt
