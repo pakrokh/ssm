@@ -142,6 +142,23 @@ docker compose up -d
 
 ---
 
+## 🔄 UI Update Troubleshooting
+
+If **Create Tunnel** still shows `Core` (GOST/Rathole/Backhaul/...) instead of `Project`, your panel is running an old image.
+
+Force rebuild from current repo source:
+
+```bash
+cd /opt/smite
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+```
+
+Then hard-refresh browser (`Ctrl+Shift+R`).
+
+---
+
 ## 🛠️ CLI Tools
 
 ### Panel CLI (`smite`)

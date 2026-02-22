@@ -292,7 +292,7 @@ fi
 
 # Pull or build Docker images
 echo ""
-echo "Pulling Docker images from GitHub Container Registry..."
+echo "Preparing Docker images..."
 echo "  Using Docker BuildKit for faster builds..."
 
 # Set version (default to latest, can be overridden with SMITE_VERSION env var)
@@ -300,13 +300,24 @@ if [ -z "${SMITE_VERSION}" ]; then
     export SMITE_VERSION=latest
 fi
 
-# Try to pull prebuilt images first (will fallback to build if not available)
-echo "  Pulling prebuilt images from GHCR..."
-if docker pull ghcr.io/zzedix/smite-panel:${SMITE_VERSION} 2>/dev/null; then
-    progress "Panel image pulled from GHCR"
+# By default, build from the checked-out source to ensure UI/API are from this repo.
+# Set SMITE_USE_PREBUILT_IMAGES=true to prefer GHCR pull.
+SMITE_USE_PREBUILT_IMAGES="${SMITE_USE_PREBUILT_IMAGES:-false}"
+
+if [ "$SMITE_USE_PREBUILT_IMAGES" = "true" ]; then
+    echo "  Pulling prebuilt image from GHCR..."
+    if docker pull ghcr.io/zzedix/smite-panel:${SMITE_VERSION} 2>/dev/null; then
+        progress "Panel image pulled from GHCR"
+    else
+        echo -e "${YELLOW}Prebuilt image not found, building locally...${NC}"
+        if docker compose build --parallel 2>&1; then
+            progress "Docker images built locally"
+        else
+            echo -e "${YELLOW}Build completed with warnings${NC}"
+        fi
+    fi
 else
-    echo -e "${YELLOW}Prebuilt image not found, will build locally...${NC}"
-    echo "  Building images locally..."
+    echo "  Building images locally from repository source..."
     if docker compose build --parallel 2>&1; then
         progress "Docker images built locally"
     else
