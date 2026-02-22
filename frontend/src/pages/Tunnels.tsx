@@ -1120,7 +1120,7 @@ interface AddTunnelModalProps {
 
 const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalProps) => {
   const { t } = useLanguage()
-  const initialProject = 'backhaul_script'
+  const initialProject = 'trusttunnel'
   const [projectCatalog, setProjectCatalog] =
     useState<Record<string, TunnelProjectProfile>>(DEFAULT_TUNNEL_PROJECTS)
   const [projectOrder, setProjectOrder] = useState<string[]>(Object.keys(DEFAULT_TUNNEL_PROJECTS))
@@ -1464,7 +1464,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Project
+                {t.tunnels.core}
               </label>
               <select
                 value={formData.project}
@@ -1482,7 +1482,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
                 })}
               </select>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {activeProjectProfile.repo}
+                {activeProjectProfile.label} - {activeProjectProfile.repo}
               </p>
             </div>
             <div>
