@@ -364,7 +364,8 @@ const Tunnels = () => {
   const reapplyTunnel = async (tunnel: Tunnel) => {
     try {
       const response = await api.post(`/tunnels/${tunnel.id}/apply`)
-      if (response.data && response.data.status === 'success') {
+      const status = response?.data?.status
+      if (response.data && (status === 'success' || status === 'applied' || status === 'skipped')) {
         fetchData()
       } else {
         throw new Error(response.data?.message || 'Failed to reapply tunnel')
