@@ -366,7 +366,13 @@ const Tunnels = () => {
       const response = await api.post(`/tunnels/${tunnel.id}/apply`)
       const status = response?.data?.status
       if (response.data && (status === 'success' || status === 'applied' || status === 'skipped')) {
-        fetchData()
+        await fetchData()
+        const resultMessage =
+          response?.data?.message ||
+          (status === 'skipped'
+            ? 'External script provider; no managed apply step'
+            : 'Tunnel reapplied successfully')
+        alert(resultMessage)
       } else {
         throw new Error(response.data?.message || 'Failed to reapply tunnel')
       }
