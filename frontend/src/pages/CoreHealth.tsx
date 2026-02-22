@@ -5,6 +5,8 @@ import { useLanguage } from '../contexts/LanguageContext'
 
 interface CoreHealth {
   core: string
+  label?: string | null
+  core_id?: string | null
   nodes_status: Record<string, {
     id: string
     name: string
@@ -23,6 +25,7 @@ interface CoreHealth {
 
 interface ResetConfig {
   core: string
+  label?: string | null
   enabled: boolean
   interval_minutes: number
   last_reset: string | null
@@ -182,8 +185,13 @@ const CoreHealth = () => {
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white capitalize">
-                      {coreHealth.core}
+                      {coreHealth.label || coreHealth.core}
                     </h2>
+                    {coreHealth.core_id && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        core: {coreHealth.core_id}
+                      </p>
+                    )}
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       {nodeCount} node(s), {serverCount} server(s)
                     </p>
@@ -328,4 +336,3 @@ const CoreHealth = () => {
 }
 
 export default CoreHealth
-
