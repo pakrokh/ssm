@@ -1,14 +1,12 @@
 """Client for panel to communicate with nodes"""
 import httpx
-import ssl
 import logging
 import asyncio
-from typing import Dict, Any, Optional, Tuple
-from pathlib import Path
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models import Node, Settings
+from app.utils import parse_address_port, format_address_port
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +16,62 @@ class NodeClient:
     
     def __init__(self):
         self.timeout = httpx.Timeout(30.0)
+
+    def _normalize_http_base(self, address: str) -> str:
+        raw = (address or "").strip()
+        if not raw:
+            return ""
+        if not raw.startswith("http://") and not raw.startswith("https://"):
+            raw = f"http://{raw}"
+        return raw.rstrip("/")
+
+    def _direct_address_candidates(self, node: Node) -> List[str]:
+        """Build a prioritized list of direct node API base URLs."""
+        metadata = node.node_metadata or {}
+        api_port = int(metadata.get("api_port") or 8888)
+        ip_address = (metadata.get("ip_address") or "").strip()
+        api_address = (metadata.get("api_address") or "").strip()
+        candidates: List[str] = []
+
+        if api_address:
+            normalized = self._normalize_http_base(api_address)
+            if normalized:
+                candidates.append(normalized)
+
+                # If api_address points to localhost, try replacing it with node IP.
+                host = normalized.split("://", 1)[1]
+                parsed_host, parsed_port, _ = parse_address_port(host)
+                if parsed_host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"} and ip_address:
+                    target_port = parsed_port or api_port
+                    replacement = self._normalize_http_base(format_address_port(ip_address, target_port))
+                    if replacement:
+                        candidates.append(replacement)
+
+        if ip_address:
+            candidates.append(self._normalize_http_base(format_address_port(ip_address, api_port)))
+
+        # Last-resort fallback for environments where hostname route works.
+        if node.fingerprint:
+            candidates.append(self._normalize_http_base(format_address_port(node.fingerprint, api_port)))
+
+        # Also try opposite scheme once for each candidate.
+        expanded: List[str] = []
+        for base in candidates:
+            if not base:
+                continue
+            expanded.append(base)
+            if base.startswith("http://"):
+                expanded.append("https://" + base[len("http://"):])
+            elif base.startswith("https://"):
+                expanded.append("http://" + base[len("https://"):])
+
+        deduped: List[str] = []
+        seen = set()
+        for base in expanded:
+            if base and base not in seen:
+                seen.add(base)
+                deduped.append(base)
+        return deduped
     
     async def _get_frp_settings(self) -> Optional[Dict[str, Any]]:
         """Get FRP communication settings"""
@@ -53,12 +107,14 @@ class NodeClient:
                 logger.warning(f"[HTTP] FRP enabled but node {node.id} has no frp_remote_port yet, temporarily using HTTP")
                 logger.warning(f"[HTTP] This should only happen during node registration. After FRP setup, all communication will use FRP.")
         
-        # FRP is not enabled or not available - use HTTP
-        node_address = node.node_metadata.get("api_address", f"http://localhost:8888") if node.node_metadata else f"http://localhost:8888"
-        if not node_address.startswith("http"):
-            node_address = f"http://{node_address}"
-        logger.info(f"[HTTP] Using direct HTTP to communicate with node {node.id} at {node_address}")
-        return (node_address, False)
+        # FRP is not enabled or not available - use direct addresses.
+        candidates = self._direct_address_candidates(node)
+        if not candidates:
+            fallback = "http://localhost:8888"
+            logger.warning("[HTTP] No direct candidate for node %s, fallback=%s", node.id, fallback)
+            return (fallback, False)
+        logger.info("[HTTP] Direct candidates for node %s: %s", node.id, candidates)
+        return (candidates[0], False)
     
     async def send_to_node(self, node_id: str, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -72,7 +128,6 @@ class NodeClient:
                 return {"status": "error", "message": f"Node {node_id} not found"}
             
             node_address, using_frp = await self._get_node_address(node)
-            url = f"{node_address.rstrip('/')}{endpoint}"
             
             comm_type = "FRP" if using_frp else "HTTP"
             logger.debug(f"[{comm_type}] Sending request to node {node_id}: {endpoint}")
@@ -81,34 +136,76 @@ class NodeClient:
                 # Retry logic for FRP connections which may need a moment to stabilize
                 max_retries = 5 if using_frp else 1
                 last_error = None
+
+                if using_frp:
+                    target_urls = [f"{node_address.rstrip('/')}{endpoint}"]
+                else:
+                    target_urls = [
+                        f"{base.rstrip('/')}{endpoint}" for base in self._direct_address_candidates(node)
+                    ] or [f"{node_address.rstrip('/')}{endpoint}"]
                 
-                for attempt in range(max_retries):
-                    try:
-                        # For FRP, use a new connection each time to avoid connection reuse issues
-                        if using_frp and attempt > 0:
-                            await asyncio.sleep(2.0)  # Longer delay for FRP retries
-                            logger.info(f"[FRP] Retry {attempt + 1}/{max_retries} for node {node_id} via FRP tunnel")
-                        
-                        async with httpx.AsyncClient(
-                            timeout=self.timeout, 
-                            verify=False,
-                            limits=httpx.Limits(max_keepalive_connections=0 if using_frp else 5)  # Disable keep-alive for FRP
-                        ) as client:
-                            response = await client.post(url, json=data)
-                            response.raise_for_status()
-                            return response.json()
-                    except httpx.RequestError as e:
-                        last_error = e
-                        if attempt < max_retries - 1:
-                            if not using_frp:
-                                await asyncio.sleep(0.5)
-                            continue
-                        else:
-                            error_msg = f"Network error: {str(e)}"
-                            if using_frp:
-                                remote_port = url.split(":")[-1].split("/")[0] if ":" in url else "unknown"
-                                error_msg += f" (FRP tunnel connection failed after {max_retries} attempts. The panel may not be able to reach FRP server on 127.0.0.1:{remote_port}. Check if panel and FRP server are in the same network namespace, or check FRP server logs.)"
-                            return {"status": "error", "message": error_msg}
+                for url in target_urls:
+                    for attempt in range(max_retries):
+                        try:
+                            # For FRP, use a new connection each time to avoid connection reuse issues
+                            if using_frp and attempt > 0:
+                                await asyncio.sleep(2.0)
+                                logger.info(
+                                    "[FRP] Retry %s/%s for node %s via FRP tunnel",
+                                    attempt + 1,
+                                    max_retries,
+                                    node_id,
+                                )
+
+                            async with httpx.AsyncClient(
+                                timeout=self.timeout,
+                                verify=False,
+                                limits=httpx.Limits(max_keepalive_connections=0 if using_frp else 5),
+                            ) as client:
+                                response = await client.post(url, json=data)
+                                response.raise_for_status()
+
+                                if not using_frp:
+                                    # Persist the working address for future requests.
+                                    working_base = url[: -len(endpoint)].rstrip("/")
+                                    current_api = self._normalize_http_base(
+                                        (node.node_metadata or {}).get("api_address", "")
+                                    )
+                                    if working_base and working_base != current_api:
+                                        from sqlalchemy.orm.attributes import flag_modified
+
+                                        node.node_metadata = dict(node.node_metadata or {})
+                                        node.node_metadata["api_address"] = working_base
+                                        flag_modified(node, "node_metadata")
+                                        await session.commit()
+                                        await session.refresh(node)
+                                        logger.info(
+                                            "[HTTP] Updated node %s api_address -> %s",
+                                            node.id,
+                                            working_base,
+                                        )
+                                return response.json()
+                        except httpx.RequestError as e:
+                            last_error = e
+                            if attempt < max_retries - 1:
+                                if not using_frp:
+                                    await asyncio.sleep(0.3)
+                                continue
+                            # Try next URL candidate
+                            break
+
+                error_msg = f"Network error: {str(last_error)}"
+                if using_frp:
+                    url = target_urls[0]
+                    remote_port = url.split(":")[-1].split("/")[0] if ":" in url else "unknown"
+                    error_msg += (
+                        f" (FRP tunnel connection failed after {max_retries} attempts. "
+                        f"The panel may not be able to reach FRP server on 127.0.0.1:{remote_port}. "
+                        "Check if panel and FRP server are in the same network namespace, or check FRP server logs.)"
+                    )
+                else:
+                    error_msg += f" (tried: {', '.join(target_urls)})"
+                return {"status": "error", "message": error_msg}
                 
                 # Should not reach here, but just in case
                 return {"status": "error", "message": f"Network error: {str(last_error)}"}
@@ -131,17 +228,50 @@ class NodeClient:
                 return {"status": "error", "message": f"Node {node_id} not found"}
             
             node_address, using_frp = await self._get_node_address(node)
-            url = f"{node_address.rstrip('/')}/api/agent/status"
             
             comm_type = "FRP" if using_frp else "HTTP"
             logger.debug(f"[{comm_type}] Getting tunnel status from node {node_id}")
             
             try:
                 timeout = httpx.Timeout(3.0, connect=2.0)
-                async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    return response.json()
+                if using_frp:
+                    target_urls = [f"{node_address.rstrip('/')}/api/agent/status"]
+                else:
+                    target_urls = [
+                        f"{base.rstrip('/')}/api/agent/status"
+                        for base in self._direct_address_candidates(node)
+                    ] or [f"{node_address.rstrip('/')}/api/agent/status"]
+
+                last_error: Exception | None = None
+                for url in target_urls:
+                    try:
+                        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+                            response = await client.get(url)
+                            response.raise_for_status()
+
+                            if not using_frp:
+                                working_base = url[: -len("/api/agent/status")].rstrip("/")
+                                current_api = self._normalize_http_base(
+                                    (node.node_metadata or {}).get("api_address", "")
+                                )
+                                if working_base and working_base != current_api:
+                                    from sqlalchemy.orm.attributes import flag_modified
+
+                                    node.node_metadata = dict(node.node_metadata or {})
+                                    node.node_metadata["api_address"] = working_base
+                                    flag_modified(node, "node_metadata")
+                                    await session.commit()
+                                    await session.refresh(node)
+                                    logger.info(
+                                        "[HTTP] Updated node %s api_address -> %s",
+                                        node.id,
+                                        working_base,
+                                    )
+                            return response.json()
+                    except httpx.RequestError as e:
+                        last_error = e
+                        continue
+                return {"status": "error", "message": f"Network error: {str(last_error)}"}
             except httpx.RequestError as e:
                 return {"status": "error", "message": f"Network error: {str(e)}"}
             except httpx.HTTPStatusError as e:
