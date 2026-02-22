@@ -1,0 +1,76 @@
+---
+version: 2
+
+plan:
+  project-key: CL
+  key: VLEIV
+  name: VpnLibsEndpoint - Increment Version
+
+stages:
+  - Default Stage:
+      manual: false
+      final: false
+      jobs:
+        - Increment version
+
+Increment version:
+  key: JOB1
+  docker:
+    image: adguard/core-libs:2.8
+    docker-run-arguments: [ ]
+  tasks:
+    - !include docker-clean.yaml
+    - checkout:
+        repository: core-libs/vpn-libs-endpoint
+        path: vpn-libs-endpoint
+        force-clean-build: 'true'
+        description: Checkout
+    - checkout:
+        repository: git-scripts
+        path: git-scripts
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |-
+            set -x -e
+
+            git config user.name "Bamboo"
+            git config user.email "Bamboo"
+
+            if [ ${bamboo_custom_version} = "none" ]; then
+                bamboo_custom_version=
+            fi
+
+            ../git-scripts/git_kit.sh pull ${bamboo_planRepository_repositoryUrl}
+
+            ./scripts/ci/increment_version.sh ./endpoint/Cargo.toml ${bamboo_custom_version}
+            git add ./endpoint/Cargo.toml Cargo.lock CHANGELOG.md
+
+            git commit -m "skipci: Automatic version increment by Bamboo"
+            git push
+        working-dir: vpn-libs-endpoint
+        description: Increment version
+  requirements:
+    - adg-privileged-docker
+  artifact-subscriptions: [ ]
+
+variables:
+  custom.version: 'none'
+
+repositories:
+  - core-libs/vpn-libs-endpoint:
+      scope: global
+  - git-scripts:
+      scope: global
+
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+
+notifications: [ ]
+
+labels: [ ]
+
+other:
+  concurrent-build-plugin: system-default

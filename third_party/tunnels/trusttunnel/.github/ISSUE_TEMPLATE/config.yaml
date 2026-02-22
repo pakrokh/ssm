@@ -1,0 +1,6 @@
+'blank_issues_enabled': true
+'contact_links':
+  - 'about': >
+        Please check TrustTunnel endpoint README for more useful information about our product
+    'name': 'README'
+    'url': 'https://github.com/TrustTunnel/TrustTunnel/blob/master/README.md'

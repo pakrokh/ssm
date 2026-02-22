@@ -1,0 +1,33 @@
+name: Security audit
+
+on:
+  push:
+    branches:
+      - "*"
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  pull_request:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+jobs:
+  security-audit:
+    permissions:
+      checks: write  # for rustsec/audit-check to create check
+      contents: read  # for actions/checkout to fetch code
+    env:
+      # This OVERRIDES the rust-toolchain.toml file for this job only
+      # because cargo-audit requires newer Rust version
+      RUSTUP_TOOLCHAIN: stable
+    runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'skipci:')"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions-rust-lang/audit@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

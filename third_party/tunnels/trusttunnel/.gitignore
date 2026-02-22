@@ -1,0 +1,11 @@
+# Rust build artifacts
+**/target/
+lib/Cargo.lock
+macros/Cargo.lock
+
+# For testing setup_wizard generated files
+certs/
+vpn.toml
+credentials.toml
+hosts.toml
+rules.toml
